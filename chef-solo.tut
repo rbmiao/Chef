@@ -1,0 +1,234 @@
+Chef-Solo Demo:
+1, Install Chef-solo:
+# curl -L https://www.opscode.com/chef/install.sh | sudo bash
+# chef-solo -v
+
+2, make chef directory in /etc
+# cd /etc
+# mkdir chef
+# cd chef
+# mkdir src
+# cd /etc/chef
+root@chefSolo:/etc/chef # vi solo.rb
+
+repo = '/etc/chef/src'
+
+cookbook_path repo + '/cookbooks'
+data_bag_path repo + '/data_bags'
+role_path     repo + '/roles'
+
+log_level :info
+log_location STDOUT
+
+# cd /etc/chef/src
+# mkdir cookbooks data_bags roles
+# cd cookbooks
+# mkdir common/recipes
+# cd /etc/chef/src/cookbooks/common/recipes
+# vi default.rb
+
+directory '/root' do
+  user 'root'
+  group 'root'
+  mode '0700'
+end
+
+3, run recipes:
+#  root@chefSolo:/etc/chef/src/cookbooks/common/recipes# chef-solo -o 'recipe[common]'
+
+4, Updating a files .. (to-be-updated file puts in directory /etc/chef/src/cookbooks/common/files/default
+	and then copied to another directory using chef-solo.)
+# cd /etc/chef/src/cookbooks/common
+# mkdir -p files/default
+# cd files/default
+# vi motd
+
+Welcome to my SErver.
+This server is for Demos
+Thanks again.
+
+# cd ../../recipes
+root@chefSolo:/etc/chef/src/cookbooks/common/recipes# cat default.rb 
+
+
+directory '/root' do
+  user 'root'
+  group 'root'
+  mode '0700'
+end
+
+cookbook_file '/etc/motd' do
+  user 'root'
+  group 'root'
+  mode '0644'
+end
+
+# After running the following command, the /etc/motd file will be created (copied) 
+from ../cookbooks/common/files/default/motd
+root@chefSolo:/etc/chef/src/cookbooks/common/files/default# chef-solo -o 'recipe[common]'
+
+
+5 # Add or Remove software packages  - package will be configured in ../common/recipe/packages.rb
+ 
+# root@chefSolo:/etc/chef/src/cookbooks/common/recipes# vi packages.rb
+
+package 'whoopsie' do
+  action :remove
+end
+
+root@chefSolo:/etc/chef/src/cookbooks/common/recipes# chef-solo -o 'recipe[common::packages]'
+----- 'whoopsie' package will be removed.
+
+
+6, # We can combine #4 and #5 together, put in default.rb:
+(...so I dont need to run chef-solo -o 'recipe[common::packages]')
+
+root@chefSolo:/etc/chef/src/cookbooks/common/recipes# vi default.rb
+
+include_recipe 'common::packages'
+
+directory '/root' do
+  user 'root'
+  group 'root'
+  mode '0700'
+end
+
+cookbook_file '/etc/motd' do
+  user 'root'
+  group 'root'
+  mode '0644'
+end
+
+# Only need run following command, both files and packages will be updated
+(Two steps are combined as one step)
+Note: ../common/recipes/packages.rb is still required.
+
+root@chefSolo:/etc/chef/src/cookbooks/common/recipes# chef-solo -o 'recipe[common]'
+
+7, We can add/remove another software packages - landscape-common:
+
+root@chefSolo:/etc/chef/src/cookbooks/common/recipes# vi packages.rb 
+
+package 'whoopsie' do
+  action :remove
+end
+
+package 'landscape-common' do
+  action :remove
+end
+
+package 'landscape-client' do
+  action :remove
+end
+
+root@chefSolo:/etc/chef/src/cookbooks/common/recipes# chef-solo -o 'recipe[common]'
+
+Or same as above:
+root@chefSolo:/etc/chef/src/cookbooks/common/recipes# vi packages.rb 
+
+['whoopsie', 'landscape-common', 'landscape-client'].each do |pkg|
+  package pkg do
+    action :remove
+  end
+end
+
+root@chefSolo:/etc/chef/src/cookbooks/common/recipes# chef-solo -o 'recipe[common]'
+
+8, Install packages ruby
+root@chefSolo:/etc/chef/src/cookbooks/common/recipes# vi packages.rb 
+
+package 'ruby' do
+  action :install
+end
+
+## Above three lines equal to following one line:
+
+package 'ruby'
+
+root@chefSolo:/etc/chef/src/cookbooks/common/recipes# chef-solo -o 'recipe[common]'
+
+
+
+9, Attributes of services for a software packages.
+()
+root@chefSolo:/etc/chef/src/cookbooks# mkdir apache
+root@chefSolo:/etc/chef/src/cookbooks# cd apache
+root@chefSolo:/etc/chef/src/cookbooks/apache# mkdir recipes
+root@chefSolo:/etc/chef/src/cookbooks/apache# mkdir templates
+root@chefSolo:/etc/chef/src/cookbooks/apache# mkdir templates/default   
+root@chefSolo:/etc/chef/src/cookbooks/apache# mkdir attributes
+root@chefSolo:/etc/chef/src/cookbooks/apache# vi attributes/default.rb
+
+node.default['apache']['srvlimit'] = 128
+
+root@chefSolo:/etc/chef/src/cookbooks/apache# vi recipes/default.rb
+
+log node['apache']['srvlimit']
+
+root@chefSolo:/etc/chef/src/cookbooks/common/recipes# chef-solo -o 'recipe[apache]'
+
+10. Install Apache2 packages: 
+
+root@chefSolo:/etc/chef/src/cookbooks/apache/recipes# cat default.rb
+
+package 'apache2-mpm-prefork' 
+
+service 'apache2' do
+  action :start
+end
+
+root@chefSolo:/etc/chef/src/cookbooks/apache/recipes# chef-solo -o 'recipe[apache]'
+
+
+11, Remove Installed Apache2 package:
+
+root@chefSolo:/etc/chef/src/cookbooks/apache/recipes# cat default.rb
+
+['apache2', 'apache2-bin', 'apache2-data', 'apache2-mpm-prefork'].each do |pkg|
+  package pkg do
+    action :remove
+  end
+end
+
+root@chefSolo:/etc/chef/src/cookbooks/apache/recipes# chef-solo -o 'recipe[apache]'
+
+
+12, Run a non-default recipe:
+root@chefSolo:/etc/chef/src/cookbooks/apache/recipes# ls
+default.rb  removeApache.rb
+
+root@chefSolo:/etc/chef/src/cookbooks/apache/recipes# chef-solo -o 'recipe[apache::removeApache]'
+
+
+
+13, Use templates for setting service properties:
+
+
+package 'apache2-mpm-prefork'
+
+service 'apache2' do
+  action :start
+end
+
+template '/etc/apache2/wqserverlimit.conf' do
+  user 'root'
+  group 'root'
+  mode '0644'
+  notifies :restart, 'service[apache2]'
+end
+
+
+Notes: 
+1, How to list all installed packages:
+dpkg --get-selections | grep deinstall
+dpkg -l
+apt --installed list
+
+2, How to remove de-install packages
+# apt-get --purge remove package-name
+
+
+
+
+
+
